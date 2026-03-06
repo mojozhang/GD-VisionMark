@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GD-VisionMark 相机标定与检测中心</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* 定制精美的 Range 输入条外观 */
+        input[type=range] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #ffffff;
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            border: 2px solid #3b82f6;
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: #4b5563;
+            /* Tailwind gray-600 */
+            border-radius: 9999px;
+        }
+
+        input[type=range]:focus {
+            outline: none;
+        }
+
+        /* 不同的色阶轨道表现 */
+        .track-h::-webkit-slider-runnable-track {
+            background: linear-gradient(to right, #ef4444, #eab308, #22c55e, #3b82f6, #a855f7, #ef4444);
+        }
+
+        .track-s::-webkit-slider-runnable-track {
+            background: linear-gradient(to right, #9ca3af, #3b82f6);
+        }
+
+        .track-v::-webkit-slider-runnable-track {
+            background: linear-gradient(to right, #000000, #ffffff);
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col font-sans antialiased">
+
+    <!-- 顶栏 -->
+    <header class="bg-gray-800 border-b border-gray-700 p-4 shadow-md flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <svg class="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z">
+                </path>
+            </svg>
+            <h1 class="text-xl font-bold tracking-wider">GD-VisionMark 测量控制台</h1>
+        </div>
+        <div class="flex space-x-3">
+            <button id="btn-start"
+                class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-lg font-medium transition duration-200 shadow-lg flex items-center">
+                <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z">
+                    </path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                启动监控
+            </button>
+            <button id="btn-stop"
+                class="bg-red-600 hover:bg-red-500 text-white px-5 py-2 rounded-lg font-medium transition duration-200 shadow-lg flex items-center opacity-50 cursor-not-allowed"
+                disabled>
+                <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"></path>
+                </svg>
+                停止监控
+            </button>
+        </div>
+    </header>
+
+    <!-- 主体内容 -->
+    <main class="flex-1 flex flex-col lg:flex-row p-6 gap-6 h-full">
+
+        <!-- 左侧视频监控区 -->
+        <div
+            class="flex-1 bg-gray-800 rounded-2xl shadow-xl overflow-hidden border border-gray-700 flex flex-col relative">
+            <div class="p-3 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
+                <div class="flex items-center">
+                    <div class="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
+                    <div class="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
+                    <div class="w-3 h-3 rounded-full bg-green-500 mr-4"></div>
+                    <span class="text-sm font-medium text-gray-400">实时画面 (去畸变后)</span>
+                </div>
+                <div class="text-xs text-blue-400 font-medium animate-pulse" id="pick-hint" style="display:none;">
+                    👆 提示：在画面上的黄线处点击以一键自动取色
+                </div>
+            </div>
+            <div class="flex-1 bg-black flex items-center justify-center relative min-h-[400px]" id="video-container">
+                <img id="video-stream" src="" class="w-full h-full object-contain hidden cursor-crosshair" alt="直播流画面"
+                    title="点击即可取色，拖拽画框限定检测区域，双击清除区域">
+                <!-- 取色确认小动画圈 -->
+                <div id="click-ripple"
+                    class="absolute w-8 h-8 rounded-full border-2 border-green-400 opacity-0 pointer-events-none transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300 scale-0 z-10">
+                </div>
+                <!-- 鼠标选区框 -->
+                <div id="roi-box"
+                    class="absolute border-2 border-dashed border-blue-400 bg-blue-400/20 pointer-events-none hidden z-10">
+                </div>
+
+                <!-- 叠加在右下角的黑白掩膜小窗 (画中画) -->
+                <div id="mask-container"
+                    class="absolute bottom-4 right-4 w-48 h-36 bg-gray-900 border-2 border-gray-600 rounded-lg shadow-2xl overflow-hidden hidden">
+                    <div class="bg-gray-700 text-xs text-center text-gray-300 py-1 font-semibold tracking-widest">MASK
+                        (掩膜视角)</div>
+                    <img id="mask-stream" src="" class="w-full h-full object-cover grayscale" alt="掩膜流画面">
+                </div>
+
+                <div id="video-placeholder" class="text-gray-500 flex flex-col items-center">
+                    <svg class="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                            d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z">
+                        </path>
+                    </svg>
+                    <p class="text-lg">摄像头尚未启动</p>
+                    <p class="text-sm mt-2">点击右上方 "启动监控" 开始实时测量流水线</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧拉拽调参控制板 -->
+        <div class="w-full lg:w-96 bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-6 flex flex-col">
+            <h2 class="text-xl font-bold mb-6 flex items-center border-b border-gray-700 pb-3">
+                <svg class="w-6 h-6 mr-2 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4">
+                    </path>
+                </svg>
+                HSV 获取阀门配置
+            </h2>
+
+            <p class="text-sm text-gray-400 mb-6">滑动各项数值，寻找过滤出最完美的黄线掩膜(Mask)。当前配置将即刻下达相机处理引擎生效。</p>
+
+            <div class="space-y-6 overflow-y-auto pr-2">
+                <!-- H_Min -->
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-sm font-medium text-gray-300">色相下限 (H Min)</label>
+                        <span id="val_h_min" class="text-sm font-bold text-blue-400 bg-gray-900 px-2 rounded">15</span>
+                    </div>
+                    <input type="range" id="h_min" class="track-h" min="0" max="179" value="15">
+                </div>
+                <!-- H_Max -->
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-sm font-medium text-gray-300">色相上限 (H Max)</label>
+                        <span id="val_h_max" class="text-sm font-bold text-blue-400 bg-gray-900 px-2 rounded">35</span>
+                    </div>
+                    <input type="range" id="h_max" class="track-h" min="0" max="179" value="35">
+                </div>
+                <hr class="border-gray-700 my-4">
+
+                <!-- S_Min -->
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-sm font-medium text-gray-300">饱和度下限 (S Min)</label>
+                        <span id="val_s_min" class="text-sm font-bold text-blue-400 bg-gray-900 px-2 rounded">80</span>
+                    </div>
+                    <input type="range" id="s_min" class="track-s" min="0" max="255" value="80">
+                </div>
+                <!-- S_Max -->
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-sm font-medium text-gray-300">饱和度上限 (S Max)</label>
+                        <span id="val_s_max" class="text-sm font-bold text-blue-400 bg-gray-900 px-2 rounded">255</span>
+                    </div>
+                    <input type="range" id="s_max" class="track-s" min="0" max="255" value="255">
+                </div>
+                <hr class="border-gray-700 my-4">
+
+                <!-- V_Min -->
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-sm font-medium text-gray-300">明度下限 (V Min)</label>
+                        <span id="val_v_min" class="text-sm font-bold text-blue-400 bg-gray-900 px-2 rounded">80</span>
+                    </div>
+                    <input type="range" id="v_min" class="track-v" min="0" max="255" value="80">
+                </div>
+                <!-- V_Max -->
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-sm font-medium text-gray-300">明度上限 (V Max)</label>
+                        <span id="val_v_max" class="text-sm font-bold text-blue-400 bg-gray-900 px-2 rounded">255</span>
+                    </div>
+                    <input type="range" id="v_max" class="track-v" min="0" max="255" value="255">
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        const btnStart = document.getElementById('btn-start');
+        const btnStop = document.getElementById('btn-stop');
+        const videoStream = document.getElementById('video-stream');
+        const maskStream = document.getElementById('mask-stream');
+        const maskContainer = document.getElementById('mask-container');
+        const videoPlaceholder = document.getElementById('video-placeholder');
+
+        // 绑定启动
+        btnStart.addEventListener('click', async () => {
+            try {
+                const res = await fetch('/api/camera/start', { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    // 主画面
+                    videoStream.src = '/video_feed';
+                    videoStream.classList.remove('hidden');
+
+                    // 掩膜副画面
+                    maskStream.src = '/mask_feed';
+                    maskContainer.classList.remove('hidden');
+
+                    videoPlaceholder.classList.add('hidden');
+                    document.getElementById('pick-hint').style.display = 'block';
+
+                    btnStart.disabled = true;
+                    btnStart.classList.add('opacity-50', 'cursor-not-allowed');
+
+                    btnStop.disabled = false;
+                    btnStop.classList.remove('opacity-50', 'cursor-not-allowed');
+                } else {
+                    alert('相机启动失败：' + data.message);
+                }
+            } catch (err) {
+                console.error(err);
+                alert('网络请求失败。');
+            }
+        });
+
+        // 绑定停止
+        btnStop.addEventListener('click', async () => {
+            try {
+                const res = await fetch('/api/camera/stop', { method: 'POST' });
+                if (res.ok) {
+                    videoStream.src = '';
+                    videoStream.classList.add('hidden');
+                    maskStream.src = '';
+                    maskContainer.classList.add('hidden');
+
+                    videoPlaceholder.classList.remove('hidden');
+                    document.getElementById('pick-hint').style.display = 'none';
+
+                    btnStop.disabled = true;
+                    btnStop.classList.add('opacity-50', 'cursor-not-allowed');
+
+                    btnStart.disabled = false;
+                    btnStart.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        });
+
+        // HSV 同步逻辑
+        const hsvInputs = ['h_min', 'h_max', 's_min', 's_max', 'v_min', 'v_max'];
+
+        // 首次拉取服务端当前阀值状态
+        async function fetchInitialHsv() {
+            try {
+                const res = await fetch('/api/hsv/current');
+                const data = await res.json();
+                hsvInputs.forEach(id => {
+                    const input = document.getElementById(id);
+                    const label = document.getElementById('val_' + id);
+                    if (data[id] !== undefined) {
+                        input.value = data[id];
+                        label.innerText = data[id];
+                    }
+                });
+            } catch (e) { }
+        }
+
+        fetchInitialHsv();
+
+        // 监听所有滑块变动发送节流请求
+        let debounceTimer;
+        hsvInputs.forEach(id => {
+            const input = document.getElementById(id);
+            const label = document.getElementById('val_' + id);
+
+            input.addEventListener('input', (e) => {
+                const val = e.target.value;
+                label.innerText = val; // 界面的即时回显
+
+                // 延迟发送更新防抖
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    const payload = {};
+                    let vmin = parseInt(document.getElementById('v_min').value, 10);
+                    let vmax = parseInt(document.getElementById('v_max').value, 10);
+                    // 强制如果 vmin 太小导致的阴影干扰被修正
+                    if (id === 'v_min' && vmin < 40) {
+                        console.warn("V_min 不能太低，否则会把反光阴影识别入！已强制回正。");
+                    }
+
+                    hsvInputs.forEach(key => {
+                        payload[key] = parseInt(document.getElementById(key).value, 10);
+                    });
+
+                    fetch('/api/hsv/update', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    }).catch(console.error);
+                }, 100); // 100ms 抖动屏蔽
+            });
+        });
+
+        // 画面点击提取颜色事件与拖拽选区
+        const clickRipple = document.getElementById('click-ripple');
+        const roiBox = document.getElementById('roi-box');
+
+        // 记录鼠标操作状态
+        let isDragging = false;
+        let startX, startY;
+
+        // 提供双击取消 ROI 的功能
+        videoStream.addEventListener('dblclick', async (e) => {
+            if (videoStream.classList.contains('hidden')) return;
+            try {
+                roiBox.classList.add('hidden');
+                await fetch('/api/roi/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ clear: true })
+                });
+            } catch (e) {
+                console.error("无法清除 ROI", e);
+            }
+        });
+
+        videoStream.addEventListener('mousedown', (e) => {
+            if (videoStream.classList.contains('hidden')) return;
+            isDragging = true;
+            const rect = videoStream.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+
+            roiBox.style.left = startX + 'px';
+            roiBox.style.top = startY + 'px';
+            roiBox.style.width = '0px';
+            roiBox.style.height = '0px';
+            roiBox.classList.remove('hidden');
+        });
+
+        videoStream.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const rect = videoStream.getBoundingClientRect();
+            let currX = e.clientX - rect.left;
+            let currY = e.clientY - rect.top;
+
+            roiBox.style.left = Math.min(startX, currX) + 'px';
+            roiBox.style.top = Math.min(startY, currY) + 'px';
+            roiBox.style.width = Math.abs(currX - startX) + 'px';
+            roiBox.style.height = Math.abs(currY - startY) + 'px';
+        });
+
+        // 原本的独立 click 改为鼠标松开综合判断
+        videoStream.addEventListener('mouseup', async (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+
+            // 获取点击的相对偏移
+            const rect = videoStream.getBoundingClientRect();
+
+            // 对于 object-fit: contain, 先算出真实的呈现长宽度（这里假定视频流是 4:3)
+            let imgAspect = 800 / 600;
+            let boxAspect = rect.width / rect.height;
+            let renderWidth, renderHeight, offsetX, offsetY;
+
+            if (boxAspect > imgAspect) {
+                renderHeight = rect.height;
+                renderWidth = rect.height * imgAspect;
+                offsetY = 0;
+                offsetX = (rect.width - renderWidth) / 2;
+            } else {
+                renderWidth = rect.width;
+                renderHeight = rect.width / imgAspect;
+                offsetX = 0;
+                offsetY = (rect.height - renderHeight) / 2;
+            }
+
+            let endX = e.clientX - rect.left;
+            let endY = e.clientY - rect.top;
+
+            // 如果移动距离极小 (说明是单纯的点击取色而已)
+            let movedDist = Math.hypot(endX - startX, endY - startY);
+            if (movedDist < 5) {
+                roiBox.classList.add('hidden'); // 隐藏框
+
+                let xPos = endX - offsetX;
+                let yPos = endY - offsetY;
+
+                if (xPos >= 0 && xPos <= renderWidth && yPos >= 0 && yPos <= renderHeight) {
+                    const xPercent = xPos / renderWidth;
+                    const yPercent = yPos / renderHeight;
+
+                    // 播放一个小动画
+                    clickRipple.style.left = endX + 'px';
+                    clickRipple.style.top = endY + 'px';
+                    clickRipple.style.opacity = '1';
+                    clickRipple.style.transform = 'translate(-50%, -50%) scale(2)';
+                    setTimeout(() => {
+                        clickRipple.style.opacity = '0';
+                        clickRipple.style.transform = 'translate(-50%, -50%) scale(0)';
+                    }, 300);
+
+                    try {
+                        const res = await fetch('/api/color/pick', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ x: xPercent, y: yPercent })
+                        });
+
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            const current = data.current;
+                            hsvInputs.forEach(id => {
+                                const input = document.getElementById(id);
+                                const label = document.getElementById('val_' + id);
+                                if (current[id] !== undefined) {
+                                    input.value = current[id];
+                                    label.innerText = current[id];
+                                }
+                            });
+                        }
+                    } catch (e) {
+                        console.error("无法完成取色请求", e);
+                    }
+                }
+            } else {
+                // 如果是发生了拖拽，这意味着发送 ROI 界限
+                // 此时计算真实渲染图区域内的百分比限制
+                let realStartX = Math.max(0, Math.min(startX - offsetX, renderWidth));
+                let realStartY = Math.max(0, Math.min(startY - offsetY, renderHeight));
+                let realEndX = Math.max(0, Math.min(endX - offsetX, renderWidth));
+                let realEndY = Math.max(0, Math.min(endY - offsetY, renderHeight));
+
+                const pX1 = realStartX / renderWidth;
+                const pY1 = realStartY / renderHeight;
+                const pX2 = realEndX / renderWidth;
+                const pY2 = realEndY / renderHeight;
+
+                try {
+                    await fetch('/api/roi/update', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ x1: pX1, y1: pY1, x2: pX2, y2: pY2 })
+                    });
+                } catch (e) {
+                    console.error("无法下文 ROI", e);
+                }
+            }
+        });
+    </script>
+</body>
+
+</html>

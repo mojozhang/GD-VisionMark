@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.npz
+*.pyc
+.DS_Store
+calibration_images/
